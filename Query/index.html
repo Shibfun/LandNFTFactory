@@ -340,7 +340,7 @@
             }
 
             ctx.strokeStyle = '#E0E0E0';
-            ctx.lineWidth = Math.max(0.1, 0.2 * scale);
+            ctx.lineWidth = Math.max(0.1, 0.2 / scale);
             ctx.beginPath();
             for (let x = 0; x <= gridSize; x++) {
                 ctx.moveTo(x * pixelSize, 0);
@@ -354,13 +354,15 @@
 
             if (scale > 2) {
                 ctx.fillStyle = '#E0E0E0';
-                ctx.font = `${Math.min(8 / scale, 4)}px Poppins`;
+                ctx.font = `${Math.min(12 / scale, 8)}px Poppins`;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                const visibleXStart = Math.max(0, Math.floor(-offsetX / scale));
-                const visibleXEnd = Math.min(gridSize, Math.ceil((-offsetX + canvas.width) / scale));
-                const visibleYStart = Math.max(0, Math.floor(-offsetY / scale));
-                const visibleYEnd = Math.min(gridSize, Math.ceil((-offsetY + canvas.height) / scale));
+
+                const visibleXStart = Math.max(0, Math.floor((-offsetX / scale)));
+                const visibleXEnd = Math.min(gridSize, Math.ceil((-offsetX + canvas.width / scale) / scale));
+                const visibleYStart = Math.max(0, Math.floor((-offsetY / scale)));
+                const visibleYEnd = Math.min(gridSize, Math.ceil((-offsetY + canvas.height / scale) / scale));
+
                 for (let x = visibleXStart; x < visibleXEnd; x++) {
                     for (let y = visibleYStart; y < visibleYEnd; y++) {
                         ctx.fillText(
