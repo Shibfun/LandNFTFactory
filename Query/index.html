@@ -161,7 +161,7 @@
             <canvas id="mapCanvas"></canvas>
             <div id="loadingOverlay" class="loading-overlay">Loading...</div>
         </div>
-        <div class="instructions">Use mouse wheel to zoom, click and drag to pan</div>
+        <div class="instructions">Use mouse wheel to zoom, click and drag to pan, hover to see coordinates</div>
     </div>
     <div class="dog-section">
         <img src="https://raw.githubusercontent.com/Shibfun/ChainBridge/refs/heads/main/images/shiba.gif" alt="Shiba Dog">
@@ -188,7 +188,7 @@
         ];
 
         // Shibarium RPC configuration
-        const shibariumRpc = 'https://rpc.shibariumchain.com';
+        const shibariumRpc = 'https://www.shibrpc.com'; // Alternative Shibarium RPC
         let web3, nftContract;
         const canvas = document.getElementById('mapCanvas');
         const ctx = canvas.getContext('2d');
@@ -198,7 +198,8 @@
         let offsetY = 0; // Pan offset Y
         let isDragging = false;
         let startX, startY;
-        let lastMintedCoordinates = []; // Cache last query results
+        let lastMintedCoordinates = []; // Cache last query results with token IDs
+        let lastHoveredCoord = null;
 
         // Messages for user feedback
         const dogMessages = {
@@ -207,7 +208,8 @@
             querySuccess: ["Woof! Map loaded successfully, minted plots are orange!"],
             queryFail: ["Woof! Query failed, please check the contract address or network!"],
             invalidAddress: ["Woof! Please enter a valid contract address!"],
-            emptyAddress: ["Woof! Contract address cannot be empty!"]
+            emptyAddress: ["Woof! Contract address cannot be empty!"],
+            timeout: ["Woof! Network request timed out, please try again!"]
         };
 
         // Get a random message from the specified type
@@ -225,6 +227,16 @@
                 document.getElementById('networkStatus').innerText = "Failed to initialize Web3 library";
                 document.getElementById('dogMessage').innerText = "Woof! Failed to load Web3 library, please try refreshing the page!";
             }
+        }
+
+        // Timeout wrapper for async calls
+        function withTimeout(promise, timeoutMs) {
+            return Promise.race([
+                promise,
+                new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Request timed out')), timeoutMs);
+                })
+            ]);
         }
 
         // Query the contract and update the map
@@ -256,13 +268,16 @@
 
                 nftContract = new web3.eth.Contract(nftAbi, contractAddress);
 
-                // Retry mechanism for RPC calls
+                // Fetch totalSupply with timeout
                 const maxRetries = 3;
-                const retryDelay = 2000; // Increased delay for stability
+                const retryDelay = 2000;
                 let totalSupply;
                 for (let attempt = 1; attempt <= maxRetries; attempt++) {
                     try {
-                        totalSupply = await nftContract.methods.totalSupply().call();
+                        totalSupply = await withTimeout(
+                            nftContract.methods.totalSupply().call(),
+                            5000 // 5 seconds timeout
+                        );
                         break;
                     } catch (error) {
                         if (attempt === maxRetries) throw new Error(`Failed to fetch totalSupply after ${maxRetries} attempts: ${error.message}`);
@@ -270,7 +285,8 @@
                     }
                 }
 
-                if (parseInt(totalSupply) === 0) {
+                const totalSupplyNum = parseInt(totalSupply);
+                if (totalSupplyNum === 0) {
                     status.innerText = "No NFTs minted in this contract";
                     dogMessage.innerText = getRandomMessage('noMinted');
                     lastMintedCoordinates = [];
@@ -280,18 +296,21 @@
                     return;
                 }
 
-                // Fetch minted coordinates by token ID
+                // Fetch minted coordinates by token ID with progress
                 let mintedCoordinates = [];
-                const batchSize = 50; // Smaller batch size for stability
-                for (let i = 1; i <= parseInt(totalSupply); i += batchSize) {
+                const batchSize = 20; // Reduced batch size for better performance
+                for (let i = 1; i <= totalSupplyNum; i += batchSize) {
                     let promises = [];
-                    for (let j = i; j < i + batchSize && j <= parseInt(totalSupply); j++) {
+                    for (let j = i; j < i + batchSize && j <= totalSupplyNum; j++) {
                         promises.push(
                             (async () => {
                                 for (let attempt = 1; attempt <= maxRetries; attempt++) {
                                     try {
-                                        const coord = await nftContract.methods.coordinateByTokenId(j).call();
-                                        return parseInt(coord);
+                                        const coord = await withTimeout(
+                                            nftContract.methods.coordinateByTokenId(j).call(),
+                                            5000
+                                        );
+                                        return { tokenId: j, coord: parseInt(coord) };
                                     } catch (error) {
                                         if (attempt === maxRetries) throw error;
                                         await new Promise(resolve => setTimeout(resolve, retryDelay));
@@ -302,6 +321,8 @@
                     }
                     const batchResults = await Promise.all(promises);
                     mintedCoordinates.push(...batchResults);
+                    // Update progress
+                    status.innerText = `Querying map... (${mintedCoordinates.length}/${totalSupplyNum} plots fetched)`;
                 }
 
                 lastMintedCoordinates = mintedCoordinates;
@@ -309,8 +330,13 @@
                 status.innerText = `Map loaded (${mintedCoordinates.length} plots minted)`;
                 dogMessage.innerText = getRandomMessage('querySuccess');
             } catch (error) {
-                status.innerText = "Query failed";
-                dogMessage.innerText = getRandomMessage('queryFail');
+                if (error.message.includes('timed out')) {
+                    status.innerText = "Network request timed out";
+                    dogMessage.innerText = getRandomMessage('timeout');
+                } else {
+                    status.innerText = "Query failed";
+                    dogMessage.innerText = getRandomMessage('queryFail');
+                }
                 console.error(error.message);
                 lastMintedCoordinates = [];
                 drawMap([]);
@@ -338,8 +364,22 @@
             for (let x = 0; x < gridSize; x++) {
                 for (let y = 0; y < gridSize; y++) {
                     const coord = x * 1000 + y;
-                    ctx.fillStyle = mintedCoordinates.includes(coord) ? '#ff9100' : '#555555';
+                    const isMinted = mintedCoordinates.some(item => item.coord === coord);
+                    ctx.fillStyle = isMinted ? '#ff9100' : '#555555';
                     ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+                }
+            }
+
+            // Draw tooltip if hovering
+            if (lastHoveredCoord) {
+                const { x, y, tokenId } = lastHoveredCoord;
+                const isMinted = mintedCoordinates.some(item => item.coord === x * 1000 + y);
+                if (isMinted) {
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+                    ctx.fillRect(x * pixelSize, y * pixelSize - 30, 120, 25);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = '12px Poppins';
+                    ctx.fillText(`(${x}, ${y}) ID: ${tokenId}`, x * pixelSize + 5, y * pixelSize - 15);
                 }
             }
 
@@ -370,11 +410,25 @@
         });
 
         canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = (e.clientX - rect.left - offsetX) / scale;
+            const mouseY = (e.clientY - rect.top - offsetY) / scale;
+            const gridX = Math.floor(mouseX);
+            const gridY = Math.floor(mouseY);
+
+            if (gridX >= 0 && gridX < 1000 && gridY >= 0 && gridY < 1000) {
+                const coord = gridX * 1000 + gridY;
+                const mintedItem = lastMintedCoordinates.find(item => item.coord === coord);
+                lastHoveredCoord = mintedItem ? { x: gridX, y: gridY, tokenId: mintedItem.tokenId } : null;
+            } else {
+                lastHoveredCoord = null;
+            }
+
             if (isDragging) {
                 offsetX = e.clientX - startX;
                 offsetY = e.clientY - startY;
-                drawMap(lastMintedCoordinates);
             }
+            drawMap(lastMintedCoordinates);
         });
 
         canvas.addEventListener('mouseup', () => {
@@ -383,6 +437,8 @@
 
         canvas.addEventListener('mouseleave', () => {
             isDragging = false;
+            lastHoveredCoord = null;
+            drawMap(lastMintedCoordinates);
         });
 
         // Event listener for query button
