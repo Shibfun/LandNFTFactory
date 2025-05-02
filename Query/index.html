@@ -40,7 +40,7 @@
             margin-bottom: 20px;
         }
         .header {
-            background: linear-gradient(90deg, var(--secondary-color) 0%, --primary-color 100%);
+            background: linear-gradient(90deg, var(--secondary-color) 0%, var(--primary-color) 100%);
             padding: 12px;
             border-radius: var(--border-radius);
             text-align: center;
@@ -117,6 +117,12 @@
             color: var(--text-color);
             font-size: 1.2em;
         }
+        .instructions {
+            margin-top: 10px;
+            font-size: 0.8em;
+            color: #cccccc;
+            text-align: center;
+        }
         .dog-section {
             text-align: center;
             margin-top: 20px;
@@ -138,6 +144,7 @@
             .map-container { height: 400px; }
             .dog-section img { width: 50px; height: 50px; }
             .dog-message { font-size: 0.8em; }
+            .instructions { font-size: 0.7em; }
         }
     </style>
 </head>
@@ -149,17 +156,18 @@
             <input type="text" id="nftContractAddress" placeholder="e.g., 0x...">
         </div>
         <button class="action-button" id="queryButton">Query Map</button>
-        <div id="networkStatus" class="status">Enter contract address and query...</div>
+        <div id="networkStatus" class="status">Enter contract address and click "Query Map"...</div>
         <div class="map-container">
             <canvas id="mapCanvas"></canvas>
             <div id="loadingOverlay" class="loading-overlay">Loading...</div>
         </div>
+        <div class="instructions">Use mouse wheel to zoom, click and drag to pan</div>
     </div>
     <div class="dog-section">
         <img src="https://raw.githubusercontent.com/Shibfun/ChainBridge/refs/heads/main/images/shiba.gif" alt="Shiba Dog">
-        <div class="dog-message" id="dogMessage">Woof! Enter the NFT contract address to view minted plots!</div>
+        <div class="dog-message" id="dogMessage">Woof! Enter the NFT contract address and click "Query Map" to view minted plots!</div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/web3@1.7.0/dist/web3.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.10.0/dist/web3.min.js"></script>
     <script>
         // ABI for the LandNFT contract
         const nftAbi = [
@@ -167,7 +175,7 @@
                 inputs: [{ internalType: "uint256", name: "", type: "uint256" }],
                 name: "coordinateByTokenId",
                 outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
- nation's: "view",
+                stateMutability: "view",
                 type: "function"
             },
             {
@@ -197,8 +205,9 @@
             invalidContract: ["Woof! Invalid NFT contract address, please check!"],
             noMinted: ["Woof! This contract has no minted NFTs!"],
             querySuccess: ["Woof! Map loaded successfully, minted plots are orange!"],
-            queryFail: ["Woof! Query failed, please check the contract address or try again!"],
-            invalidAddress: ["Woof! Please enter a valid contract address!"]
+            queryFail: ["Woof! Query failed, please check the contract address or network!"],
+            invalidAddress: ["Woof! Please enter a valid contract address!"],
+            emptyAddress: ["Woof! Contract address cannot be empty!"]
         };
 
         // Get a random message from the specified type
@@ -209,7 +218,13 @@
 
         // Initialize Web3 with Shibarium RPC
         function initializeWeb3() {
-            web3 = new Web3(shibariumRpc);
+            try {
+                web3 = new Web3(shibariumRpc);
+            } catch (error) {
+                console.error("Failed to initialize Web3:", error.message);
+                document.getElementById('networkStatus').innerText = "Failed to initialize Web3 library";
+                document.getElementById('dogMessage').innerText = "Woof! Failed to load Web3 library, please try refreshing the page!";
+            }
         }
 
         // Query the contract and update the map
@@ -218,6 +233,13 @@
             const status = document.getElementById('networkStatus');
             const dogMessage = document.getElementById('dogMessage');
             const queryButton = document.getElementById('queryButton');
+
+            if (!contractAddress) {
+                status.innerText = "Please enter a contract address";
+                dogMessage.innerText = getRandomMessage('emptyAddress');
+                drawMap([]);
+                return;
+            }
 
             if (!web3.utils.isAddress(contractAddress)) {
                 status.innerText = "Please enter a valid contract address";
@@ -233,23 +255,25 @@
                 loadingOverlay.style.display = "flex";
 
                 nftContract = new web3.eth.Contract(nftAbi, contractAddress);
-                
+
                 // Retry mechanism for RPC calls
                 const maxRetries = 3;
+                const retryDelay = 2000; // Increased delay for stability
                 let totalSupply;
                 for (let attempt = 1; attempt <= maxRetries; attempt++) {
                     try {
                         totalSupply = await nftContract.methods.totalSupply().call();
                         break;
                     } catch (error) {
-                        if (attempt === maxRetries) throw error;
-                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        if (attempt === maxRetries) throw new Error(`Failed to fetch totalSupply after ${maxRetries} attempts: ${error.message}`);
+                        await new Promise(resolve => setTimeout(resolve, retryDelay));
                     }
                 }
 
                 if (parseInt(totalSupply) === 0) {
                     status.innerText = "No NFTs minted in this contract";
                     dogMessage.innerText = getRandomMessage('noMinted');
+                    lastMintedCoordinates = [];
                     drawMap([]);
                     loadingOverlay.style.display = "none";
                     queryButton.disabled = false;
@@ -270,7 +294,7 @@
                                         return parseInt(coord);
                                     } catch (error) {
                                         if (attempt === maxRetries) throw error;
-                                        await new Promise(resolve => setTimeout(resolve, 1000));
+                                        await new Promise(resolve => setTimeout(resolve, retryDelay));
                                     }
                                 }
                             })()
@@ -287,8 +311,9 @@
             } catch (error) {
                 status.innerText = "Query failed";
                 dogMessage.innerText = getRandomMessage('queryFail');
-                drawMap([]);
                 console.error(error.message);
+                lastMintedCoordinates = [];
+                drawMap([]);
             } finally {
                 loadingOverlay.style.display = "none";
                 queryButton.disabled = false;
@@ -360,18 +385,8 @@
             isDragging = false;
         });
 
-        // Debounce input to prevent excessive queries
-        let debounceTimeout;
-        function debounce(func, delay) {
-            return function (...args) {
-                clearTimeout(debounceTimeout);
-                debounceTimeout = setTimeout(() => func.apply(this, args), delay);
-            };
-        }
-
-        // Event listeners
+        // Event listener for query button
         document.getElementById('queryButton').addEventListener('click', updateMap);
-        document.getElementById('nftContractAddress').addEventListener('input', debounce(updateMap, 500));
 
         // Initialize Web3 and draw empty map
         initializeWeb3();
