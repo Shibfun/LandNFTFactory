@@ -161,7 +161,7 @@
             <canvas id="mapCanvas"></canvas>
             <div id="loadingOverlay" class="loading-overlay">Loading...</div>
         </div>
-        <div class="instructions">Use mouse wheel to zoom, click and drag to pan, hover to see coordinates</div>
+        <div class="instructions">Use mouse wheel to zoom, click and drag to pan, hover to see coordinates, click to show position</div>
     </div>
     <div class="dog-section">
         <img src="https://raw.githubusercontent.com/Shibfun/ChainBridge/refs/heads/main/images/shiba.gif" alt="Shiba Dog">
@@ -200,6 +200,7 @@
         let startX, startY;
         let lastMintedCoordinates = []; // Cache last query results with token IDs
         let lastHoveredCoord = null;
+        let lastStatusMessage = "Enter contract address and click \"Query Map\"..."; // Store last query status
 
         // Messages for user feedback
         const dogMessages = {
@@ -287,7 +288,8 @@
 
                 const totalSupplyNum = parseInt(totalSupply);
                 if (totalSupplyNum === 0) {
-                    status.innerText = "No NFTs minted in this contract";
+                    lastStatusMessage = "No NFTs minted in this contract";
+                    status.innerText = lastStatusMessage;
                     dogMessage.innerText = getRandomMessage('noMinted');
                     lastMintedCoordinates = [];
                     drawMap([]);
@@ -306,7 +308,7 @@
                             (async () => {
                                 for (let attempt = 1; attempt <= maxRetries; attempt++) {
                                     try {
-                                        const coord = await withTimeout(
+                                        const coordLISTEN = await withTimeout(
                                             nftContract.methods.coordinateByTokenId(j).call(),
                                             5000
                                         );
@@ -327,14 +329,17 @@
 
                 lastMintedCoordinates = mintedCoordinates;
                 drawMap(mintedCoordinates);
-                status.innerText = `Map loaded (${mintedCoordinates.length} plots minted)`;
+                lastStatusMessage = `Map loaded (${mintedCoordinates.length} plots minted)`;
+                status.innerText = lastStatusMessage;
                 dogMessage.innerText = getRandomMessage('querySuccess');
             } catch (error) {
                 if (error.message.includes('timed out')) {
-                    status.innerText = "Network request timed out";
+                    lastStatusMessage = "Network request timed out";
+                    status.innerText = lastStatusMessage;
                     dogMessage.innerText = getRandomMessage('timeout');
                 } else {
-                    status.innerText = "Query failed";
+                    lastStatusMessage = "Query failed";
+                    status.innerText = lastStatusMessage;
                     dogMessage.innerText = getRandomMessage('queryFail');
                 }
                 console.error(error.message);
@@ -441,8 +446,29 @@
             drawMap(lastMintedCoordinates);
         });
 
+        // Click event to show coordinates
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = (e.clientX - rect.left - offsetX) / scale;
+            const mouseY = (e.clientY - rect.top - offsetY) / scale;
+            const gridX = Math.floor(mouseX);
+            const gridY = Math.floor(mouseY);
+
+            if (gridX >= 0 && gridX < 1000 && gridY >= 0 && gridY < 1000) {
+                const coord = gridX * 1000 + gridY;
+                const mintedItem = lastMintedCoordinates.find(item => item.coord === coord);
+                if (mintedItem) {
+                    document.getElementById('networkStatus').innerText = `Clicked: (${gridX}, ${gridY}) - Token ID: ${mintedItem.tokenId}`;
+                } else {
+                    document.getElementById('networkStatus').innerText = `Clicked: (${gridX}, ${gridY})`;
+                }
+            }
+        });
+
         // Event listener for query button
-        document.getElementById('queryButton').addEventListener('click', updateMap);
+        document.getElementById('queryButton').addEventListener('click', async () => {
+            await updateMap();
+        });
 
         // Initialize Web3 and draw empty map
         initializeWeb3();
