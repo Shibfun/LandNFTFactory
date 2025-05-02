@@ -169,7 +169,6 @@
     </div>
     <script src="https://cdn.jsdelivr.net/npm/web3@1.10.0/dist/web3.min.js"></script>
     <script>
-        // ABI for the LandNFT contract
         const nftAbi = [
             {
                 inputs: [{ internalType: "uint256", name: "", type: "uint256" }],
@@ -187,22 +186,21 @@
             }
         ];
 
-        // Shibarium RPC configuration
-        const shibariumRpc = 'https://www.shibrpc.com'; // Alternative Shibarium RPC
-        let web3, nftContract;
+        const shibariumRpc = 'https://www.shibrpc.com';
+        let web3 = new Web3(shibariumRpc);
+        let nftContract;
         const canvas = document.getElementById('mapCanvas');
         const ctx = canvas.getContext('2d');
         const loadingOverlay = document.getElementById('loadingOverlay');
-        let scale = 0.5; // Initial zoom level
-        let offsetX = 0; // Pan offset X
-        let offsetY = 0; // Pan offset Y
+        let scale = 0.5;
+        let offsetX = 0;
+        let offsetY = 0;
         let isDragging = false;
         let startX, startY;
-        let lastMintedCoordinates = []; // Cache last query results with token IDs
+        let lastMintedCoordinates = [];
         let lastHoveredCoord = null;
-        let lastStatusMessage = "Enter contract address and click \"Query Map\"..."; // Store last query status
+        let lastStatusMessage = "Enter contract address and click \"Query Map\"...";
 
-        // Messages for user feedback
         const dogMessages = {
             invalidContract: ["Woof! Invalid NFT contract address, please check!"],
             noMinted: ["Woof! This contract has no minted NFTs!"],
@@ -213,34 +211,18 @@
             timeout: ["Woof! Network request timed out, please try again!"]
         };
 
-        // Get a random message from the specified type
         function getRandomMessage(type) {
             const messages = dogMessages[type];
             return messages[Math.floor(Math.random() * messages.length)];
         }
 
-        // Initialize Web3 with Shibarium RPC
-        function initializeWeb3() {
-            try {
-                web3 = new Web3(shibariumRpc);
-            } catch (error) {
-                console.error("Failed to initialize Web3:", error.message);
-                document.getElementById('networkStatus').innerText = "Failed to initialize Web3 library";
-                document.getElementById('dogMessage').innerText = "Woof! Failed to load Web3 library, please try refreshing the page!";
-            }
-        }
-
-        // Timeout wrapper for async calls
         function withTimeout(promise, timeoutMs) {
             return Promise.race([
                 promise,
-                new Promise((_, reject) => {
-                    setTimeout(() => reject(new Error('Request timed out')), timeoutMs);
-                })
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), timeoutMs))
             ]);
         }
 
-        // Query the contract and update the map
         async function updateMap() {
             const contractAddress = document.getElementById('nftContractAddress').value.trim();
             const status = document.getElementById('networkStatus');
@@ -261,28 +243,21 @@
                 return;
             }
 
+            queryButton.disabled = true;
+            status.innerText = "Querying map...";
+            dogMessage.innerText = "Woof! Fetching minted plots...";
+            loadingOverlay.style.display = "flex";
+
             try {
-                queryButton.disabled = true;
-                status.innerText = "Querying map...";
-                dogMessage.innerText = "Woof! Fetching minted plots...";
-                loadingOverlay.style.display = "flex";
-
                 nftContract = new web3.eth.Contract(nftAbi, contractAddress);
-
-                // Fetch totalSupply with timeout
-                const maxRetries = 3;
-                const retryDelay = 2000;
                 let totalSupply;
-                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                for (let attempt = 1; attempt <= 3; attempt++) {
                     try {
-                        totalSupply = await withTimeout(
-                            nftContract.methods.totalSupply().call(),
-                            5000 // 5 seconds timeout
-                        );
+                        totalSupply = await withTimeout(nftContract.methods.totalSupply().call(), 5000);
                         break;
                     } catch (error) {
-                        if (attempt === maxRetries) throw new Error(`Failed to fetch totalSupply after ${maxRetries} attempts: ${error.message}`);
-                        await new Promise(resolve => setTimeout(resolve, retryDelay));
+                        if (attempt === 3) throw new Error(`Failed to fetch totalSupply: ${error.message}`);
+                        await new Promise(resolve => setTimeout(resolve, 2000));
                     }
                 }
 
@@ -298,24 +273,20 @@
                     return;
                 }
 
-                // Fetch minted coordinates by token ID with progress
                 let mintedCoordinates = [];
-                const batchSize = 20; // Reduced batch size for better performance
+                const batchSize = 20;
                 for (let i = 1; i <= totalSupplyNum; i += batchSize) {
                     let promises = [];
                     for (let j = i; j < i + batchSize && j <= totalSupplyNum; j++) {
                         promises.push(
                             (async () => {
-                                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                                for (let attempt = 1; attempt <= 3; attempt++) {
                                     try {
-                                        const coord = await withTimeout(
-                                            nftContract.methods.coordinateByTokenId(j).call(),
-                                            5000
-                                        );
+                                        const coord = await withTimeout(nftContract.methods.coordinateByTokenId(j).call(), 5000);
                                         return { tokenId: j, coord: parseInt(coord) };
                                     } catch (error) {
-                                        if (attempt === maxRetries) throw error;
-                                        await new Promise(resolve => setTimeout(resolve, retryDelay));
+                                        if (attempt === 3) throw error;
+                                        await new Promise(resolve => setTimeout(resolve, 2000));
                                     }
                                 }
                             })()
@@ -323,7 +294,6 @@
                     }
                     const batchResults = await Promise.all(promises);
                     mintedCoordinates.push(...batchResults);
-                    // Update progress
                     status.innerText = `Querying map... (${mintedCoordinates.length}/${totalSupplyNum} plots fetched)`;
                 }
 
@@ -342,7 +312,6 @@
                     status.innerText = lastStatusMessage;
                     dogMessage.innerText = getRandomMessage('queryFail');
                 }
-                console.error(error.message);
                 lastMintedCoordinates = [];
                 drawMap([]);
             } finally {
@@ -351,13 +320,10 @@
             }
         }
 
-        // Draw the 1000x1000 grid map with grid lines
         function drawMap(mintedCoordinates) {
             const gridSize = 1000;
             const pixelSize = 1 * scale;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Adjust canvas size to fit container
             canvas.width = canvas.parentElement.clientWidth;
             canvas.height = canvas.parentElement.clientHeight;
 
@@ -365,7 +331,6 @@
             ctx.translate(offsetX, offsetY);
             ctx.scale(scale, scale);
 
-            // Draw grid cells
             for (let x = 0; x < gridSize; x++) {
                 for (let y = 0; y < gridSize; y++) {
                     const coord = x * 1000 + y;
@@ -375,32 +340,45 @@
                 }
             }
 
-            // Draw grid lines (light white)
-            ctx.strokeStyle = '#E0E0E0'; // Light white color for grid lines
-            ctx.lineWidth = Math.max(0.1, 0.2 * scale); // Adjust line width based on scale
+            ctx.strokeStyle = '#E0E0E0';
+            ctx.lineWidth = Math.max(0.1, 0.2 * scale);
             ctx.beginPath();
-
-            // Draw vertical lines
             for (let x = 0; x <= gridSize; x++) {
                 ctx.moveTo(x * pixelSize, 0);
                 ctx.lineTo(x * pixelSize, gridSize * pixelSize);
             }
-
-            // Draw horizontal lines
             for (let y = 0; y <= gridSize; y++) {
                 ctx.moveTo(0, y * pixelSize);
                 ctx.lineTo(gridSize * pixelSize, y * pixelSize);
             }
-
             ctx.stroke();
 
-            // Draw tooltip if hovering
+            if (scale > 2) {
+                ctx.fillStyle = '#E0E0E0';
+                ctx.font = `${Math.min(8 / scale, 4)}px Poppins`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                const visibleXStart = Math.max(0, Math.floor(-offsetX / scale));
+                const visibleXEnd = Math.min(gridSize, Math.ceil((-offsetX + canvas.width) / scale));
+                const visibleYStart = Math.max(0, Math.floor(-offsetY / scale));
+                const visibleYEnd = Math.min(gridSize, Math.ceil((-offsetY + canvas.height) / scale));
+                for (let x = visibleXStart; x < visibleXEnd; x++) {
+                    for (let y = visibleYStart; y < visibleYEnd; y++) {
+                        ctx.fillText(
+                            `(${x},${y})`,
+                            x * pixelSize + pixelSize / 2,
+                            y * pixelSize + pixelSize / 2
+                        );
+                    }
+                }
+            }
+
             if (lastHoveredCoord) {
                 const { x, y, tokenId } = lastHoveredCoord;
                 const isMinted = mintedCoordinates.some(item => item.coord === x * 1000 + y);
                 if (isMinted) {
                     ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-                    ctx.fillRect(x * pixelSize, y * pixelSize - 30, 120, 25);
+ CTX.fillRect(x * pixelSize, y * pixelSize - 30, 120, 25);
                     ctx.fillStyle = '#ffffff';
                     ctx.font = '12px Poppins';
                     ctx.fillText(`(${x}, ${y}) ID: ${tokenId}`, x * pixelSize + 5, y * pixelSize - 15);
@@ -410,20 +388,16 @@
             ctx.restore();
         }
 
-        // Zoom and pan controls
         canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
             const zoomSpeed = 0.1;
             const oldScale = scale;
             scale = Math.max(0.1, scale * (e.deltaY > 0 ? 1 - zoomSpeed : 1 + zoomSpeed));
-
-            // Adjust offset to zoom towards mouse position
             const rect = canvas.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
             offsetX = mouseX - (mouseX - offsetX) * (scale / oldScale);
             offsetY = mouseY - (mouseY - offsetY) * (scale / oldScale);
-
             drawMap(lastMintedCoordinates);
         });
 
@@ -439,7 +413,6 @@
             const mouseY = (e.clientY - rect.top - offsetY) / scale;
             const gridX = Math.floor(mouseX);
             const gridY = Math.floor(mouseY);
-
             if (gridX >= 0 && gridX < 1000 && gridY >= 0 && gridY < 1000) {
                 const coord = gridX * 1000 + gridY;
                 const mintedItem = lastMintedCoordinates.find(item => item.coord === coord);
@@ -447,7 +420,6 @@
             } else {
                 lastHoveredCoord = null;
             }
-
             if (isDragging) {
                 offsetX = e.clientX - startX;
                 offsetY = e.clientY - startY;
@@ -465,32 +437,27 @@
             drawMap(lastMintedCoordinates);
         });
 
-        // Click event to show coordinates
         canvas.addEventListener('click', (e) => {
             const rect = canvas.getBoundingClientRect();
             const mouseX = (e.clientX - rect.left - offsetX) / scale;
             const mouseY = (e.clientY - rect.top - offsetY) / scale;
             const gridX = Math.floor(mouseX);
             const gridY = Math.floor(mouseY);
-
             if (gridX >= 0 && gridX < 1000 && gridY >= 0 && gridY < 1000) {
                 const coord = gridX * 1000 + gridY;
                 const mintedItem = lastMintedCoordinates.find(item => item.coord === coord);
                 if (mintedItem) {
-                    document.getElementById('networkStatus').innerText = `Clicked: (${gridX}, ${gridY}) - Token ID: ${mintedItem.tokenId}`;
+                    document.getElementById('networkStatus').innerText = `Token ID: ${mintedItem.tokenId} at (${gridX}, ${gridY})`;
                 } else {
-                    document.getElementById('networkStatus').innerText = `Clicked: (${gridX}, ${gridY})`;
+                    document.getElementById('networkStatus').innerText = lastStatusMessage;
                 }
             }
         });
 
-        // Event listener for query button
         document.getElementById('queryButton').addEventListener('click', async () => {
             await updateMap();
         });
 
-        // Initialize Web3 and draw empty map
-        initializeWeb3();
         drawMap([]);
     </script>
 </body>
