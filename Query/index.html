@@ -308,7 +308,7 @@
                             (async () => {
                                 for (let attempt = 1; attempt <= maxRetries; attempt++) {
                                     try {
-                                        const coordLISTEN = await withTimeout(
+                                        const coord = await withTimeout(
                                             nftContract.methods.coordinateByTokenId(j).call(),
                                             5000
                                         );
