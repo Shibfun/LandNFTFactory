@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shiba NFT Map</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #ff9100;
+            --secondary-color: #ff6f61;
+            --gradient-bg: linear-gradient(180deg, #1e1e2f 0%, #2a2a3d 100%);
+            --card-bg: #2c2f48;
+            --input-bg: #373b5c;
+            --text-color: #ffffff;
+            --border-radius: 15px;
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: var(--gradient-bg);
+            color: var(--text-color);
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: var(--card-bg);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border-radius: var(--border-radius);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .header {
+            background: linear-gradient(90deg, var(--secondary-color) 0%, var(--primary-color) 100%);
+            padding: 12px;
+            border-radius: var(--border-radius);
+            text-align: center;
+            font-size: 1.3em;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+        .input-box {
+            background: var(--input-bg);
+            padding: 15px;
+            border-radius: var(--border-radius);
+            margin-bottom: 15px;
+        }
+        .input-box label {
+            display: block;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            background: var(--input-bg);
+            border: none;
+            border-radius: 10px;
+            color: var(--text-color);
+            font-size: 1em;
+        }
+        .action-button {
+            padding: 15px;
+            background: var(--primary-color);
+            color: var(--text-color);
+            border: none;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            font-weight: bold;
+            width: 100%;
+            transition: background 0.2s;
+            margin-bottom: 10px;
+        }
+        .action-button:hover { background: #e68a00; }
+        .status {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: var(--primary-color);
+            text-align: center;
+        }
+        .map-container {
+            width: 100%;
+            max-width: 800px;
+            height: 600px;
+            overflow: hidden;
+            border-radius: var(--border-radius);
+            background: #1C2526;
+            position: relative;
+        }
+        #mapCanvas {
+            width: 100%;
+            height: 100%;
+        }
+        .dog-section {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .dog-section img {
+            width: 60px;
+            height: 60px;
+            margin-bottom: 10px;
+        }
+        .dog-message {
+            font-size: 0.9em;
+            color: var(--secondary-color);
+            font-style: italic;
+        }
+        @media (max-width: 480px) {
+            body { padding: 10px; }
+            .container { padding: 15px; }
+            .header { font-size: 1.1em; }
+            .map-container { height: 400px; }
+            .dog-section img { width: 50px; height: 50px; }
+            .dog-message { font-size: 0.8em; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">Shiba NFT Map - View Minted Plots</div>
+        <div class="input-box">
+            <label for="nftContractAddress">NFT Contract Address</label>
+            <input type="text" id="nftContractAddress" placeholder="e.g., 0x...">
+        </div>
+        <button class="action-button" id="queryButton">Query Map</button>
+        <div id="networkStatus" class="status">Enter contract address and query...</div>
+        <div class="map-container">
+            <canvas id="mapCanvas"></canvas>
+        </div>
+    </div>
+    <div class="dog-section">
+        <img src="https://raw.githubusercontent.com/Shibfun/ChainBridge/refs/heads/main/images/shiba.gif" alt="Shiba Dog">
+        <div class="dog-message" id="dogMessage">Woof! Enter the NFT contract address to view minted plots!</div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.7.0/dist/web3.min.js"></script>
+    <script>
+        // ABI for the LandNFT contract
+        const nftAbi = [
+            {
+                inputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+                name: "coordinatesMinted",
+                outputs: [{ internalType: "bool", name: "", type: "bool" }],
+                stateMutability: "view",
+                type: "function"
+            },
+            {
+                inputs: [],
+                name: "totalSupply",
+                outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+                stateMutability: "view",
+                type: "function"
+            }
+        ];
+
+        // Shibarium RPC configuration
+        const shibariumRpc = 'https://rpc.shibariumchain.com';
+        let web3, nftContract;
+        const canvas = document.getElementById('mapCanvas');
+        const ctx = canvas.getContext('2d');
+        let scale = 0.5; // Initial zoom level
+        let offsetX = 0; // Pan offset X
+        let offsetY = 0; // Pan offset Y
+        let isDragging = false;
+        let startX, startY;
+
+        // Messages for user feedback
+        const dogMessages = {
+            invalidContract: ["Woof! Invalid NFT contract address, please check!"],
+            noMinted: ["Woof! This contract has no minted NFTs!"],
+            querySuccess: ["Woof! Map loaded successfully, minted plots are orange!"],
+            queryFail: ["Woof! Query failed, please try again later!"],
+            invalidAddress: ["Woof! Please enter a valid contract address!"]
+        };
+
+        // Get a random message from the specified type
+        function getRandomMessage(type) {
+            const messages = dogMessages[type];
+            return messages[Math.floor(Math.random() * messages.length)];
+        }
+
+        // Initialize Web3 with Shibarium RPC
+        function initializeWeb3() {
+            web3 = new Web3(shibariumRpc);
+        }
+
+        // Query the contract and update the map
+        async function updateMap() {
+            const contractAddress = document.getElementById('nftContractAddress').value.trim();
+            const status = document.getElementById('networkStatus');
+            const dogMessage = document.getElementById('dogMessage');
+
+            if (!web3.utils.isAddress(contractAddress)) {
+                status.innerText = "Please enter a valid contract address";
+                dogMessage.innerText = getRandomMessage('invalidAddress');
+                drawMap([]);
+                return;
+            }
+
+            try {
+                status.innerText = "Querying map...";
+                dogMessage.innerText = "Woof! Sniffing out plot info...";
+                nftContract = new web3.eth.Contract(nftAbi, contractAddress);
+                const totalSupply = await nftContract.methods.totalSupply().call();
+
+                drawMap([]);
+                if (parseInt(totalSupply) === 0) {
+                    status.innerText = "No NFTs minted in this contract";
+                    dogMessage.innerText = getRandomMessage('noMinted');
+                    return;
+                }
+
+                // Fetch minted coordinates in batches for efficiency
+                const batchSize = 100;
+                let mintedCoordinates = [];
+                for (let i = 0; i < 1000 * 1000; i += batchSize) {
+                    let promises = [];
+                    for (let j = i; j < i + batchSize && j < 1000 * 1000; j++) {
+                        promises.push(nftContract.methods.coordinatesMinted(j).call().then(minted => minted ? j : null));
+                    }
+                    const results = await Promise.all(promises);
+                    mintedCoordinates.push(...results.filter(coord => coord !== null));
+                }
+
+                drawMap(mintedCoordinates);
+                status.innerText = "Map loaded";
+                dogMessage.innerText = getRandomMessage('querySuccess');
+            } catch (error) {
+                status.innerText = "Query failed";
+                dogMessage.innerText = getRandomMessage('queryFail');
+                console.error(error.message);
+                drawMap([]);
+            }
+        }
+
+        // Draw the 1000x1000 grid map
+        function drawMap(mintedCoordinates) {
+            const gridSize = 1000;
+            const pixelSize = 1 * scale;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Adjust canvas size to fit container
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+
+            ctx.save();
+            ctx.translate(offsetX, offsetY);
+            ctx.scale(scale, scale);
+
+            // Draw grid
+            for (let x = 0; x < gridSize; x++) {
+                for (let y = 0; y < gridSize; y++) {
+                    const coord = x * 1000 + y;
+                    ctx.fillStyle = mintedCoordinates.includes(coord) ? '#ff9100' : '#555555';
+                    ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+                }
+            }
+
+            ctx.restore();
+        }
+
+        // Zoom and pan controls
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomSpeed = 0.1;
+            const oldScale = scale;
+            scale = Math.max(0.1, scale * (e.deltaY > 0 ? 1 - zoomSpeed : 1 + zoomSpeed));
+
+            // Adjust offset to zoom towards mouse position
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            offsetX = mouseX - (mouseX - offsetX) * (scale / oldScale);
+            offsetY = mouseY - (mouseY - offsetY) * (scale / oldScale);
+
+            drawMap([]);
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            startX = e.clientX - offsetX;
+            startY = e.clientY - offsetY;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                offsetX = e.clientX - startX;
+                offsetY = e.clientY - startY;
+                drawMap([]);
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isDragging = false;
+        });
+
+        // Debounce input to prevent excessive queries
+        let debounceTimeout;
+        function debounce(func, delay) {
+            return function (...args) {
+                clearTimeout(debounceTimeout);
+                debounceTimeout = setTimeout(() => func.apply(this, args), delay);
+            };
+        }
+
+        // Event listeners
+        document.getElementById('queryButton').addEventListener('click', updateMap);
+        document.getElementById('nftContractAddress').addEventListener('input', debounce(updateMap, 500));
+
+        // Initialize Web3
+        initializeWeb3();
+        drawMap([]);
+    </script>
+</body>
+</html>
