@@ -40,7 +40,7 @@
             margin-bottom: 20px;
         }
         .header {
-            background: linear-gradient(90deg, var(--secondary-color) 0%, var(--primary-color) 100%);
+            background: linear-gradient(90deg, var(--secondary-color) 0%, --primary-color 100%);
             padding: 12px;
             border-radius: var(--border-radius);
             text-align: center;
@@ -81,6 +81,10 @@
             margin-bottom: 10px;
         }
         .action-button:hover { background: #e68a00; }
+        .action-button:disabled {
+            background: #4a4f7a;
+            cursor: not-allowed;
+        }
         .status {
             margin-top: 10px;
             font-size: 0.9em;
@@ -99,6 +103,19 @@
         #mapCanvas {
             width: 100%;
             height: 100%;
+        }
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            color: var(--text-color);
+            font-size: 1.2em;
         }
         .dog-section {
             text-align: center;
@@ -135,6 +152,7 @@
         <div id="networkStatus" class="status">Enter contract address and query...</div>
         <div class="map-container">
             <canvas id="mapCanvas"></canvas>
+            <div id="loadingOverlay" class="loading-overlay">Loading...</div>
         </div>
     </div>
     <div class="dog-section">
@@ -147,9 +165,9 @@
         const nftAbi = [
             {
                 inputs: [{ internalType: "uint256", name: "", type: "uint256" }],
-                name: "coordinatesMinted",
-                outputs: [{ internalType: "bool", name: "", type: "bool" }],
-                stateMutability: "view",
+                name: "coordinateByTokenId",
+                outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+ nation's: "view",
                 type: "function"
             },
             {
@@ -166,18 +184,20 @@
         let web3, nftContract;
         const canvas = document.getElementById('mapCanvas');
         const ctx = canvas.getContext('2d');
+        const loadingOverlay = document.getElementById('loadingOverlay');
         let scale = 0.5; // Initial zoom level
         let offsetX = 0; // Pan offset X
         let offsetY = 0; // Pan offset Y
         let isDragging = false;
         let startX, startY;
+        let lastMintedCoordinates = []; // Cache last query results
 
         // Messages for user feedback
         const dogMessages = {
             invalidContract: ["Woof! Invalid NFT contract address, please check!"],
             noMinted: ["Woof! This contract has no minted NFTs!"],
             querySuccess: ["Woof! Map loaded successfully, minted plots are orange!"],
-            queryFail: ["Woof! Query failed, please try again later!"],
+            queryFail: ["Woof! Query failed, please check the contract address or try again!"],
             invalidAddress: ["Woof! Please enter a valid contract address!"]
         };
 
@@ -197,6 +217,7 @@
             const contractAddress = document.getElementById('nftContractAddress').value.trim();
             const status = document.getElementById('networkStatus');
             const dogMessage = document.getElementById('dogMessage');
+            const queryButton = document.getElementById('queryButton');
 
             if (!web3.utils.isAddress(contractAddress)) {
                 status.innerText = "Please enter a valid contract address";
@@ -206,38 +227,71 @@
             }
 
             try {
+                queryButton.disabled = true;
                 status.innerText = "Querying map...";
-                dogMessage.innerText = "Woof! Sniffing out plot info...";
-                nftContract = new web3.eth.Contract(nftAbi, contractAddress);
-                const totalSupply = await nftContract.methods.totalSupply().call();
+                dogMessage.innerText = "Woof! Fetching minted plots...";
+                loadingOverlay.style.display = "flex";
 
-                drawMap([]);
+                nftContract = new web3.eth.Contract(nftAbi, contractAddress);
+                
+                // Retry mechanism for RPC calls
+                const maxRetries = 3;
+                let totalSupply;
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                    try {
+                        totalSupply = await nftContract.methods.totalSupply().call();
+                        break;
+                    } catch (error) {
+                        if (attempt === maxRetries) throw error;
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
+                }
+
                 if (parseInt(totalSupply) === 0) {
                     status.innerText = "No NFTs minted in this contract";
                     dogMessage.innerText = getRandomMessage('noMinted');
+                    drawMap([]);
+                    loadingOverlay.style.display = "none";
+                    queryButton.disabled = false;
                     return;
                 }
 
-                // Fetch minted coordinates in batches for efficiency
-                const batchSize = 100;
+                // Fetch minted coordinates by token ID
                 let mintedCoordinates = [];
-                for (let i = 0; i < 1000 * 1000; i += batchSize) {
+                const batchSize = 50; // Smaller batch size for stability
+                for (let i = 1; i <= parseInt(totalSupply); i += batchSize) {
                     let promises = [];
-                    for (let j = i; j < i + batchSize && j < 1000 * 1000; j++) {
-                        promises.push(nftContract.methods.coordinatesMinted(j).call().then(minted => minted ? j : null));
+                    for (let j = i; j < i + batchSize && j <= parseInt(totalSupply); j++) {
+                        promises.push(
+                            (async () => {
+                                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                                    try {
+                                        const coord = await nftContract.methods.coordinateByTokenId(j).call();
+                                        return parseInt(coord);
+                                    } catch (error) {
+                                        if (attempt === maxRetries) throw error;
+                                        await new Promise(resolve => setTimeout(resolve, 1000));
+                                    }
+                                }
+                            })()
+                        );
                     }
-                    const results = await Promise.all(promises);
-                    mintedCoordinates.push(...results.filter(coord => coord !== null));
+                    const batchResults = await Promise.all(promises);
+                    mintedCoordinates.push(...batchResults);
                 }
 
+                lastMintedCoordinates = mintedCoordinates;
                 drawMap(mintedCoordinates);
-                status.innerText = "Map loaded";
+                status.innerText = `Map loaded (${mintedCoordinates.length} plots minted)`;
                 dogMessage.innerText = getRandomMessage('querySuccess');
             } catch (error) {
                 status.innerText = "Query failed";
                 dogMessage.innerText = getRandomMessage('queryFail');
-                console.error(error.message);
                 drawMap([]);
+                console.error(error.message);
+            } finally {
+                loadingOverlay.style.display = "none";
+                queryButton.disabled = false;
             }
         }
 
@@ -281,7 +335,7 @@
             offsetX = mouseX - (mouseX - offsetX) * (scale / oldScale);
             offsetY = mouseY - (mouseY - offsetY) * (scale / oldScale);
 
-            drawMap([]);
+            drawMap(lastMintedCoordinates);
         });
 
         canvas.addEventListener('mousedown', (e) => {
@@ -294,7 +348,7 @@
             if (isDragging) {
                 offsetX = e.clientX - startX;
                 offsetY = e.clientY - startY;
-                drawMap([]);
+                drawMap(lastMintedCoordinates);
             }
         });
 
@@ -319,7 +373,7 @@
         document.getElementById('queryButton').addEventListener('click', updateMap);
         document.getElementById('nftContractAddress').addEventListener('input', debounce(updateMap, 500));
 
-        // Initialize Web3
+        // Initialize Web3 and draw empty map
         initializeWeb3();
         drawMap([]);
     </script>
