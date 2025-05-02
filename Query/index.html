@@ -161,7 +161,7 @@
             <canvas id="mapCanvas"></canvas>
             <div id="loadingOverlay" class="loading-overlay">Loading...</div>
         </div>
-        <div class="instructions">Use mouse wheel to zoom, click and drag to pan, hover to see coordinates, click to show position</div>
+        <div class="instructions">Use mouse wheel to zoom, click and drag to pan</div>
     </div>
     <div class="dog-section">
         <img src="https://raw.githubusercontent.com/Shibfun/ChainBridge/refs/heads/main/images/shiba.gif" alt="Shiba Dog">
@@ -198,7 +198,6 @@
         let isDragging = false;
         let startX, startY;
         let lastMintedCoordinates = [];
-        let lastHoveredCoord = null;
         let lastStatusMessage = "Enter contract address and click \"Query Map\"...";
 
         const dogMessages = {
@@ -373,18 +372,6 @@
                 }
             }
 
-            if (lastHoveredCoord) {
-                const { x, y, tokenId } = lastHoveredCoord;
-                const isMinted = mintedCoordinates.some(item => item.coord === x * 1000 + y);
-                if (isMinted) {
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
- CTX.fillRect(x * pixelSize, y * pixelSize - 30, 120, 25);
-                    ctx.fillStyle = '#ffffff';
-                    ctx.font = '12px Poppins';
-                    ctx.fillText(`(${x}, ${y}) ID: ${tokenId}`, x * pixelSize + 5, y * pixelSize - 15);
-                }
-            }
-
             ctx.restore();
         }
 
@@ -408,18 +395,6 @@
         });
 
         canvas.addEventListener('mousemove', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const mouseX = (e.clientX - rect.left - offsetX) / scale;
-            const mouseY = (e.clientY - rect.top - offsetY) / scale;
-            const gridX = Math.floor(mouseX);
-            const gridY = Math.floor(mouseY);
-            if (gridX >= 0 && gridX < 1000 && gridY >= 0 && gridY < 1000) {
-                const coord = gridX * 1000 + gridY;
-                const mintedItem = lastMintedCoordinates.find(item => item.coord === coord);
-                lastHoveredCoord = mintedItem ? { x: gridX, y: gridY, tokenId: mintedItem.tokenId } : null;
-            } else {
-                lastHoveredCoord = null;
-            }
             if (isDragging) {
                 offsetX = e.clientX - startX;
                 offsetY = e.clientY - startY;
@@ -433,25 +408,7 @@
 
         canvas.addEventListener('mouseleave', () => {
             isDragging = false;
-            lastHoveredCoord = null;
             drawMap(lastMintedCoordinates);
-        });
-
-        canvas.addEventListener('click', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const mouseX = (e.clientX - rect.left - offsetX) / scale;
-            const mouseY = (e.clientY - rect.top - offsetY) / scale;
-            const gridX = Math.floor(mouseX);
-            const gridY = Math.floor(mouseY);
-            if (gridX >= 0 && gridX < 1000 && gridY >= 0 && gridY < 1000) {
-                const coord = gridX * 1000 + gridY;
-                const mintedItem = lastMintedCoordinates.find(item => item.coord === coord);
-                if (mintedItem) {
-                    document.getElementById('networkStatus').innerText = `Token ID: ${mintedItem.tokenId} at (${gridX}, ${gridY})`;
-                } else {
-                    document.getElementById('networkStatus').innerText = lastStatusMessage;
-                }
-            }
         });
 
         document.getElementById('queryButton').addEventListener('click', async () => {
