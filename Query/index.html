@@ -351,7 +351,7 @@
             }
         }
 
-        // Draw the 1000x1000 grid map
+        // Draw the 1000x1000 grid map with grid lines
         function drawMap(mintedCoordinates) {
             const gridSize = 1000;
             const pixelSize = 1 * scale;
@@ -365,7 +365,7 @@
             ctx.translate(offsetX, offsetY);
             ctx.scale(scale, scale);
 
-            // Draw grid
+            // Draw grid cells
             for (let x = 0; x < gridSize; x++) {
                 for (let y = 0; y < gridSize; y++) {
                     const coord = x * 1000 + y;
@@ -374,6 +374,25 @@
                     ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
                 }
             }
+
+            // Draw grid lines (light white)
+            ctx.strokeStyle = '#E0E0E0'; // Light white color for grid lines
+            ctx.lineWidth = Math.max(0.1, 0.2 * scale); // Adjust line width based on scale
+            ctx.beginPath();
+
+            // Draw vertical lines
+            for (let x = 0; x <= gridSize; x++) {
+                ctx.moveTo(x * pixelSize, 0);
+                ctx.lineTo(x * pixelSize, gridSize * pixelSize);
+            }
+
+            // Draw horizontal lines
+            for (let y = 0; y <= gridSize; y++) {
+                ctx.moveTo(0, y * pixelSize);
+                ctx.lineTo(gridSize * pixelSize, y * pixelSize);
+            }
+
+            ctx.stroke();
 
             // Draw tooltip if hovering
             if (lastHoveredCoord) {
