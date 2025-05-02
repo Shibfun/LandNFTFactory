@@ -103,6 +103,30 @@
         #mapCanvas {
             width: 100%;
             height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        .grid-overlay {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 2;
+            pointer-events: none;
+            transform-origin: top left;
+        }
+        .grid-cell {
+            position: absolute;
+            color: #E0E0E0;
+            font-size: 8px;
+            text-align: center;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         .loading-overlay {
             position: absolute;
@@ -116,6 +140,7 @@
             align-items: center;
             color: var(--text-color);
             font-size: 1.2em;
+            z-index: 3;
         }
         .instructions {
             margin-top: 10px;
@@ -145,6 +170,7 @@
             .dog-section img { width: 50px; height: 50px; }
             .dog-message { font-size: 0.8em; }
             .instructions { font-size: 0.7em; }
+            .grid-cell { font-size: 6px; }
         }
     </style>
 </head>
@@ -159,6 +185,7 @@
         <div id="networkStatus" class="status">Enter contract address and click "Query Map"...</div>
         <div class="map-container">
             <canvas id="mapCanvas"></canvas>
+            <div id="gridOverlay" class="grid-overlay"></div>
             <div id="loadingOverlay" class="loading-overlay">Loading...</div>
         </div>
         <div class="instructions">Use mouse wheel to zoom, click and drag to pan</div>
@@ -191,6 +218,7 @@
         let nftContract;
         const canvas = document.getElementById('mapCanvas');
         const ctx = canvas.getContext('2d');
+        const gridOverlay = document.getElementById('gridOverlay');
         const loadingOverlay = document.getElementById('loadingOverlay');
         let scale = 0.5;
         let offsetX = 0;
@@ -199,6 +227,7 @@
         let startX, startY;
         let lastMintedCoordinates = [];
         let lastStatusMessage = "Enter contract address and click \"Query Map\"...";
+        const gridSize = 1000;
 
         const dogMessages = {
             invalidContract: ["Woof! Invalid NFT contract address, please check!"],
@@ -220,6 +249,21 @@
                 promise,
                 new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), timeoutMs))
             ]);
+        }
+
+        function initializeGridOverlay() {
+            for (let x = 0; x < gridSize; x++) {
+                for (let y = 0; y < gridSize; y++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'grid-cell';
+                    cell.innerText = `(${x},${y})`;
+                    cell.style.width = '1px';
+                    cell.style.height = '1px';
+                    cell.style.left = `${x}px`;
+                    cell.style.top = `${y}px`;
+                    gridOverlay.appendChild(cell);
+                }
+            }
         }
 
         async function updateMap() {
@@ -320,7 +364,6 @@
         }
 
         function drawMap(mintedCoordinates) {
-            const gridSize = 1000;
             const pixelSize = 1 * scale;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             canvas.width = canvas.parentElement.clientWidth;
@@ -352,29 +395,9 @@
             }
             ctx.stroke();
 
-            if (scale > 2) {
-                ctx.fillStyle = '#E0E0E0';
-                ctx.font = `${Math.min(12 / scale, 8)}px Poppins`;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-
-                const visibleXStart = Math.max(0, Math.floor((-offsetX / scale)));
-                const visibleXEnd = Math.min(gridSize, Math.ceil((-offsetX + canvas.width / scale) / scale));
-                const visibleYStart = Math.max(0, Math.floor((-offsetY / scale)));
-                const visibleYEnd = Math.min(gridSize, Math.ceil((-offsetY + canvas.height / scale) / scale));
-
-                for (let x = visibleXStart; x < visibleXEnd; x++) {
-                    for (let y = visibleYStart; y < visibleYEnd; y++) {
-                        ctx.fillText(
-                            `(${x},${y})`,
-                            x * pixelSize + pixelSize / 2,
-                            y * pixelSize + pixelSize / 2
-                        );
-                    }
-                }
-            }
-
             ctx.restore();
+
+            gridOverlay.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
         }
 
         canvas.addEventListener('wheel', (e) => {
@@ -417,6 +440,7 @@
             await updateMap();
         });
 
+        initializeGridOverlay();
         drawMap([]);
     </script>
 </body>
