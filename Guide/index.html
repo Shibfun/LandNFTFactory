@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Woofswap - Land NFT Factory Guide</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        h1, h2, h3 {
+            color: #ff9100;
+        }
+        .container {
+            background: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .note {
+            background: #fff3cd;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        a {
+            color: #ff6f61;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Woofswap - Land NFT Factory Guide</h1>
+        <p>Welcome to the Woofswap Land NFT Factory, a user-friendly interface for creating and minting Land NFTs on the Shibarium blockchain. This guide explains the key features and how to use the platform.</p>
+
+        <h2>Overview</h2>
+        <p>The Woofswap Land NFT Factory allows users to:</p>
+        <ul>
+            <li>Create custom Land NFT contracts with specified name, symbol, max supply, and payment settings.</li>
+            <li>Mint NFTs based on unique (x, y) coordinates on a 1000x1000 grid.</li>
+            <li>View owned NFTs and created contracts.</li>
+            <li>Preview NFT metadata and images directly in the interface.</li>
+        </ul>
+
+        <h2>Requirements</h2>
+        <ul>
+            <li><a href="https://metamask.io/" target="_blank">MetaMask</a> installed in your browser.</li>
+            <li>Wallet connected to the Shibarium network (Chain ID: 109).</li>
+            <li>Sufficient BONE or ERC20 tokens for contract creation and NFT minting (if applicable).</li>
+        </ul>
+
+        <h2>How to Use</h2>
+        <h3>1. Connect Wallet</h3>
+        <ul>
+            <li>Click the "Connect Wallet" button to link your MetaMask wallet.</li>
+            <li>Ensure the wallet is switched to the Shibarium network. The interface will prompt to add or switch if needed.</li>
+        </ul>
+
+        <h3>2. Create a Land NFT Contract</h3>
+        <ul>
+            <li>Enter the contract details:
+                <ul>
+                    <li><strong>Name</strong>: Alphanumeric, spaces, or hyphens (max 50 characters).</li>
+                    <li><strong>Symbol</strong>: Alphanumeric, spaces, or hyphens (max 10 characters).</li>
+                    <li><strong>Max Supply</strong>: Between 1 and 1,000,000.</li>
+                    <li><strong>Payment Type</strong>: Choose BONE (native) or ERC20 token.</li>
+                    <li><strong>Payment Token Address</strong>: Zero address (0x000...) for BONE, or a valid ERC20 token address.</li>
+                    <li><strong>Payment Amount</strong>: Amount required per NFT mint (in BONE or tokens).</li>
+                </ul>
+            </li>
+            <li>Click "Create NFT Contract" and confirm the transaction in MetaMask.</li>
+            <li>Once confirmed, the new contract address will appear in the "Your Created NFT Contracts" section.</li>
+        </ul>
+
+        <h3>3. Mint a Land NFT</h3>
+        <ul>
+            <li>Enter the NFT contract address in the "NFT Contract Address" field to load contract details.</li>
+            <li>Specify the coordinates:
+                <ul>
+                    <li><strong>X Coordinate</strong>: 0 to 999.</li>
+                    <li><strong>Y Coordinate</strong>: 0 to 999.</li>
+                </ul>
+            </li>
+            <li>Click "Mint NFT" and confirm the transaction. Ensure you have enough BONE or tokens for the minting fee (if set).</li>
+            <li>Minted NFTs will appear in the "Owned Land NFTs" section.</li>
+        </ul>
+
+        <h3>4. View NFTs and Contracts</h3>
+        <ul>
+            <li><strong>Created Contracts</strong>: Lists up to 10 recently created contracts with their name, symbol, and address. Click "Copy" to copy the contract address.</li>
+            <li><strong>Owned NFTs</strong>: Displays your NFTs with their coordinates and token IDs. Click "View" to preview the NFT image.</li>
+            <li><strong>NFT Preview</strong>: Shows the SVG image of the selected NFT, including its name, symbol, and coordinates.</li>
+        </ul>
+
+        <h2>Notes</h2>
+        <div class="note">
+            <p><strong>Network</strong>: The platform operates on Shibarium (Chain ID: 109). Ensure your wallet is connected to this network.</p>
+            <p><strong>Gas Fees</strong>: Transactions require BONE for gas fees on Shibarium.</p>
+            <p><strong>Input Validation</strong>: Coordinates must be unique and within 0-999. Contract names and symbols are case-insensitive and must be unique.</p>
+            <p><strong>Contract Address</strong>: The factory contract is deployed at <code>0xeAf0155D4Fe75eF0cd357be8f63370Fb2506ceEF</code>. Verify this address before interacting.</p>
+        </div>
+
+        <h2>Support</h2>
+        <p>For issues or questions, please contact the Woofswap team via the official channels or check the <a href="https://shibariumscan.io/" target="_blank">Shibarium Explorer</a> for transaction details.</p>
+    </div>
+</body>
+</html>
